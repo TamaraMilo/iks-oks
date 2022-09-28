@@ -1,24 +1,47 @@
+
 use cosmwasm_schema::{cw_serde, QueryResponses};
+use cosmwasm_std::Addr;
+use serde::{Serialize, Deserialize};
 
 #[cw_serde]
-pub struct InstMsg {
-  
+pub struct InitMsg {
+    pub player1: Addr,
+    pub player2: Addr,
+    pub token_contract_addr: Addr,
+    pub token_exchange_rate: u128,
+    pub token_contract_hash: String
+
 }
-
-#[cw_serde]
-pub enum ExecuteMsg {
-   
+#[cw_serde(Serialize)]
+pub enum HandleMsg {
+   PlayMove{ place: Vec<u8>}
 }
 
 #[cw_serde]
 #[derive(QueryResponses)]
 pub enum QueryMsg {
-    
+
+    #[returns(TableStatusResponse)]
+    TableStatus{},
+    #[returns(PlayerTurnResponse)]
+    PlayerTurn{},
+    #[returns(GameStatusRespons)]
+    GameStatus{}
 
 }
 
 // We define a custom struct for each query response
-#[cw_serde]
-pub struct GetCountResponse {
-   
+
+#[cw_serde(Serialize)]
+pub struct TableStatusResponse {
+   pub table: String
+}
+
+#[cw_serde(Serialize)]
+pub struct PlayerTurnResponse{
+    pub turn: u8
+}
+#[cw_serde(Serialize)]
+pub struct GameStatusRespons{
+    pub status: String
 }

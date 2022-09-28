@@ -1,11 +1,11 @@
 use cosmwasm_schema::write_api;
 
-use iks_oks::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
+use iks_oks::msg::{ InitMsg, QueryMsg};
 
 fn main() {
-    write_api! {
-        instantiate: InstantiateMsg,
-        execute: ExecuteMsg,
-        query: QueryMsg,
-    }
+    // write_api! {
+    //     instantiate: InitMsg,
+    //     execute: ExecuteMsg,
+    //     query: QueryMsg,
+    // }
 }

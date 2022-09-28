@@ -1,24 +1,220 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::{to_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult};
-use cw2::set_contract_version;
+use cosmwasm_std::{
+    to_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult, Uint128,
+};
 
 use crate::error::ContractError;
-use crate::msg::{ExecuteMsg, GetCountResponse, InstMsg, QueryMsg};
-use crate::state::{State, STATE};
+use crate::msg::{
+    GameStatusRespons, HandleMsg, InitMsg, PlayerTurnResponse, QueryMsg, TableStatusResponse,
+};
+use crate::state::{config, config_read, State};
 
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:iks-oks";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
+#[cfg_attr(not(feature = "library"), entry_point)]
+pub fn init(
+    deps: DepsMut,
+    _env: Env,
+    info: MessageInfo,
+    msg: InitMsg,
+) -> Result<Response, ContractError> {
+    let state = State {
+        player1: msg.player1,
+        player2: msg.player2,
+        turn: 1,
+        contract_addr: msg.token_contract_addr,
+        table: vec![
+            "-".to_string(),
+            "-".to_string(),
+            "-".to_string(),
+            "-".to_string(),
+            "-".to_string(),
+            "-".to_string(),
+            "-".to_string(),
+            "-".to_string(),
+            "-".to_string(),
+        ],
 
+        exchange_rate: msg.token_exchange_rate,
+        contract_hash: msg.token_contract_hash,
+        total_raised: Uint128::zero(),
+        played_game: false,
+        winner: 0,
+    };
 
+    config(deps.storage).save(&state)?;
 
+    Ok(Response::default())
+}
 
+pub fn execute(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    msg: HandleMsg,
+) -> Result<Response, ContractError> {
+    match msg {
+        HandleMsg::PlayMove { place } => playmove(deps, env, info, msg, place),
+    }
+}
 
+pub fn playmove(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    msg: HandleMsg,
+    place: Vec<u8>,
+) -> Result<Response, ContractError> {
+    let storage = config(deps.storage).load()?;
+    if storage.turn == 1 {
+        if storage.player1 != info.sender {
+            return Err(ContractError::CustomError {
+                val: "It's not your turn!".to_string(),
+            });
+        }
+    } else {
+        if storage.player2 != info.sender {
+            return Err(ContractError::CustomError {
+                val: "It's not your turn!".to_string(),
+            });
+        }
+    }
 
+    let total_coins_sent: Uint128 = Uint128::zero();
+    for coin in info.funds.iter() {
+        //Da li ovde stavljam moj naziv tokena
+        if coin.denom != "moj???" {
+            return Err(ContractError::CustomError {
+                val: "Only my coin is suppoted. Invalid coin sent.".to_owned(),
+            });
+        }
+        total_coins_sent = total_coins_sent + coin.amount;
+    }
+    if total_coins_sent.is_zero() {
+        return Err(ContractError::CustomError {
+            val: "No coins sent.".to_owned(),
+        });
+    }
 
-// #[cfg_attr(not(feature = "library"), entry_point)]
+    storage.total_raised = storage.total_raised + total_coins_sent;
+
+    if storage.played_game {
+        return Err(ContractError::CustomError {
+            val: "Game played already".to_string(),
+        });
+    }
+
+    let mut simbol = "".to_string();
+
+    if storage.turn == 1 {
+        simbol = "X".to_string();
+    } else {
+        simbol = "O".to_string();
+    }
+
+    let k: usize = (place[0] * 3 + place[1]).into();
+    if storage.table[k] != "-" {
+        return Err(ContractError::CustomError {
+            val: "Spot is not empty".to_string(),
+        });
+    }
+    storage.table[k] == simbol;
+
+    if CheckForWin(storage.table.clone()) {
+        storage.played_game = true;
+        storage.winner = storage.turn;
+    }
+
+    if storage.turn == 1 {
+        storage.turn = 2;
+    } else {
+        storage.turn = 1;
+    }
+
+    config(deps.storage).save(&storage)?;
+
+    Ok(())
+}
+
+pub fn CheckForWin(table: Vec<String>) -> bool {
+    let main_diagonal = table[0];
+    let mut main_d = true;
+    let anti_diagonal = table[2];
+    let mut anti_d = true;
+
+    for i in 0..2 {
+        if main_diagonal != table[4 * i] {
+            main_d = false;
+        }
+        if anti_diagonal != table[i * 2 + 2] {
+            anti_d = false;
+        }
+
+        if table[i] == table[i + 3] && table[i] == table[i + 6] {
+            return true;
+        }
+        if table[3 * i] == table[i * 3 + 1] && table[3 * i] == table[3 * i + 2] {
+            return true;
+        }
+    }
+
+    if main_d || anti_d {
+        return true;
+    }
+
+    return false;
+}
+
+#[cfg_attr(not(feature = "library"), entry_point)]
+pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
+    match msg {
+        QueryMsg::TableStatus {} => to_binary(&query_table_status(deps)?),
+        QueryMsg::PlayerTurn {} => to_binary(&query_player_turn(deps)?),
+        QueryMsg::GameStatus {} => to_binary(&query_game_status(deps)?),
+    }
+}
+pub fn query_table_status(deps: Deps) -> StdResult<TableStatusResponse> {
+    let storage = config_read(deps.storage).load()?;
+    let mut table = String::from(" ");
+
+    for i in 0..2 {
+        let mut row = vec![];
+        for j in 0..2 {
+            let k = i * 3 + j;
+            row.push(storage.table[k]);
+        }
+        table += &row.join(" | ").to_string();
+        table += "\n";
+    }
+
+    Ok(TableStatusResponse { table })
+}
+pub fn query_player_turn(deps: Deps) -> StdResult<PlayerTurnResponse> {
+    let storage = config_read(deps.storage).load()?;
+    Ok(PlayerTurnResponse { turn: storage.turn })
+}
+pub fn query_game_status(deps: Deps) -> StdResult<GameStatusRespons> {
+    let storage = config_read(deps.storage).load()?;
+    let mut status: String = String::new();
+    if storage.played_game {
+        if storage.winner == 0 {
+            status = String::from("game ended in a tie.");
+        } else {
+            status = format!("Game ended. Player {} won.", storage.winner);
+        }
+    } else {
+        status = format!(
+            "Game is still in progress. It's player {} turn.",
+            storage.turn
+        );
+    }
+
+    Ok(GameStatusRespons { status })
+}
+
 // pub fn instantiate(
 //     deps: DepsMut,
 //     _env: Env,
