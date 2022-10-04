@@ -4,22 +4,18 @@ use cosmwasm_storage::{singleton, singleton_read, ReadonlySingleton, Singleton};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use cosmwasm_std::{Addr, Storage, Uint128};
+use cosmwasm_std::{Addr, Storage};
 
 pub static CONFIG_KEY: &[u8] = b"config";
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
 pub struct State {
-    pub exchange_rate: u128,
     pub player1: Addr,
     pub player2: Addr,
-    pub turn: u8,
-    pub contract_addr: Addr,
+    pub turn: Addr,
     pub table: Vec<String>,
-    pub contract_hash: String,
-    pub total_raised: Uint128,
-    pub played_game: bool, 
-    pub winner: u8,
+    pub game_ended: bool, 
+    pub winner: Addr,
    
 }
 

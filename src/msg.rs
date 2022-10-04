@@ -1,15 +1,11 @@
 
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::Addr;
-use serde::{Serialize, Deserialize};
+use cosmwasm_std::{Addr, Uint128};
 
 #[cw_serde]
 pub struct InitMsg {
     pub player1: Addr,
     pub player2: Addr,
-    pub token_contract_addr: Addr,
-    pub token_exchange_rate: u128,
-    pub token_contract_hash: String
 
 }
 #[cw_serde(Serialize)]
@@ -39,7 +35,7 @@ pub struct TableStatusResponse {
 
 #[cw_serde(Serialize)]
 pub struct PlayerTurnResponse{
-    pub turn: u8
+    pub turn: Addr
 }
 #[cw_serde(Serialize)]
 pub struct GameStatusRespons{
