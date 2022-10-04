@@ -1,9 +1,8 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::{to_binary, Addr, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult};
-use cw_storage_plus::KeyDeserialize;
-
+use cosmwasm_std::{to_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult};
 use crate::error::ContractError;
+use crate::helpers::{GameState, Board, Coordinates};
 use crate::msg::{
     GameStatusRespons, HandleMsg, InitMsg, PlayerTurnResponse, QueryMsg, TableStatusResponse,
 };
@@ -16,23 +15,14 @@ pub fn init(
     _info: MessageInfo,
     msg: InitMsg,
 ) -> Result<Response, ContractError> {
+    let board = Board::new();
     let state = State {
         player1: msg.player1.clone(),
         player2: msg.player2,
         turn: msg.player1,
-        table: vec![
-            "-".to_string(),
-            "-".to_string(),
-            "-".to_string(),
-            "-".to_string(),
-            "-".to_string(),
-            "-".to_string(),
-            "-".to_string(),
-            "-".to_string(),
-            "-".to_string(),
-        ],
-        game_ended: false,
-        winner: Addr::from_slice(b"")?,
+        board,
+        game_state: GameState::InProgess,
+        no_moves: 0,
     };
 
     config(deps.storage).save(&state)?;
@@ -47,17 +37,17 @@ pub fn execute(
     msg: HandleMsg,
 ) -> Result<Response, ContractError> {
     match msg {
-        HandleMsg::PlayMove { place } => playmove(deps, info, place),
+        HandleMsg::PlayMove { coordinates } => playmove(deps, info, coordinates),
     }
 }
 
 pub fn playmove(
     deps: DepsMut,
     info: MessageInfo,
-    place: Vec<u8>,
+    coordinates: Coordinates,
 ) -> Result<Response, ContractError> {
     let mut storage = config(deps.storage).load()?;
-    if storage.game_ended == true {
+    if storage.game_state != GameState::InProgess || storage.no_moves == 9 {
         return Err(ContractError::CustomError {
             val: "Game ended.".to_string(),
         });
@@ -68,25 +58,23 @@ pub fn playmove(
         });
     }
 
-    let mut simbol = "".to_string();
+    let mut sign = "".to_string();
 
     if storage.turn == storage.player1 {
-        simbol = "X".to_string();
+        sign = "X".to_string();
     } else {
-        simbol = "O".to_string();
+        sign = "O".to_string();
     }
 
-    let k: usize = (place[0] * 3 + place[1]).into();
-    if storage.table[k] != "-" {
-        return Err(ContractError::CustomError {
-            val: "Spot is not empty".to_string(),
-        });
+    let last_move: usize = (coordinates.x * 3 + coordinates.y).into();
+    if !storage.board.occupy_cell(storage.turn.clone(), coordinates.clone(), sign) 
+    {
+        return Err(ContractError::CustomError { val: "Spot is occupied".to_string() })
     }
-    storage.table[k] = simbol;
+    storage.no_moves = storage.no_moves+1;
 
-    if check_for_win(storage.table.clone()) {
-        storage.game_ended = true;
-        storage.winner = storage.turn.clone();
+    if storage.board.check_for_win(coordinates.clone()) {
+        storage.game_state = GameState::GameWon{player: storage.turn.clone()};
     }
 
     if storage.turn == storage.player1 {
@@ -98,40 +86,8 @@ pub fn playmove(
     config(deps.storage).save(&storage)?;
 
     let mut response = Response::default();
-    response = response.set_data(to_binary(&storage.table).unwrap());
+    response = response.set_data(to_binary(&storage.board).unwrap());
     Ok(response)
-}
-
-pub fn check_for_win(table: Vec<String>) -> bool {
-    let main_diagonal = table[0].clone();
-    let mut main_win = true;
-    let anti_diagonal = table[2].clone();
-    let mut anti_win = true;
-
-    for i in 0..3 {
-        if main_diagonal != table[4 * i] || main_diagonal == "-".to_string() {
-            main_win = false;
-        }
-        if anti_diagonal != table[i * 2 + 2] || anti_diagonal == "-".to_string() {
-            anti_win = false;
-        }
-
-        if table[i] == table[i + 3] && table[i] == table[i + 6] && table[i] != "-".to_string() {
-            return true;
-        }
-        if table[3 * i] == table[i * 3 + 1]
-            && table[3 * i] == table[3 * i + 2]
-            && table[3 * i] != "-".to_string()
-        {
-            return true;
-        }
-    }
-
-    if main_win || anti_win {
-        return true;
-    }
-
-    return false;
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -144,19 +100,11 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
 }
 pub fn query_table_status(deps: Deps) -> StdResult<TableStatusResponse> {
     let storage = config_read(deps.storage).load()?;
-    let mut table = String::from(" ");
+    let status = storage.board.draw_board();
 
-    for i in 0..3 {
-        let mut row = vec![];
-        for j in 0..3 {
-            let k = i * 3 + j;
-            row.push(storage.table[k].clone());
-        }
-        table += &row.join(" | ").to_string();
-        table += "\x20";
-    }
+    
 
-    Ok(TableStatusResponse { table })
+    Ok(TableStatusResponse { status })
 }
 pub fn query_player_turn(deps: Deps) -> StdResult<PlayerTurnResponse> {
     let storage = config_read(deps.storage).load()?;
@@ -165,17 +113,20 @@ pub fn query_player_turn(deps: Deps) -> StdResult<PlayerTurnResponse> {
 pub fn query_game_status(deps: Deps) -> StdResult<GameStatusRespons> {
     let storage = config_read(deps.storage).load()?;
     let mut status = String::new();
-    if storage.game_ended {
-        if storage.winner == "" {
-            status = String::from("game ended in a tie.");
-        } else {
-            status = format!("Game ended. Player {} won.", storage.winner);
-        }
-    } else {
+    if storage.game_state == GameState::InProgess {
         status = format!(
             "Game is still in progress. It's player {} turn.",
             storage.turn
         );
+    } else {
+        if storage.game_state == GameState::Tie
+        {
+            status = String::from("Game ended in a tie;")
+        }
+        else
+        {   let player = storage.game_state as crate::helpers::GameState;
+            status = format!("Game ended. Player {:?} won!", player )
+        }
     }
 
     Ok(GameStatusRespons { status })
@@ -185,6 +136,7 @@ mod tests {
     use super::*;
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info, MockApi, MockQuerier};
     use cosmwasm_std::{coins, from_binary, Addr, MemoryStorage, OwnedDeps};
+    use nalgebra::coordinates;
 
     fn initialization() -> OwnedDeps<MemoryStorage, MockApi, MockQuerier> {
         let mut deps = mock_dependencies();
@@ -226,9 +178,9 @@ mod tests {
     #[test]
     fn play_move_test() {
         let mut deps = initialization();
-        let place: Vec<u8> = vec![1, 1];
+        let coordinates= Coordinates::new(1,1);
 
-        let msg = HandleMsg::PlayMove { place };
+        let msg = HandleMsg::PlayMove { coordinates };
         let player1_info = mock_info("player1", &coins(10, "ioc"));
         let play_move = execute(deps.as_mut(), mock_env(), player1_info.clone(), msg.clone());
         assert!(play_move.is_ok());
@@ -237,8 +189,9 @@ mod tests {
     #[test]
     fn play_same_move_test() {
         let mut deps = initialization();
-        let place: Vec<u8> = vec![1, 1];
-        let msg = HandleMsg::PlayMove { place };
+        let coordinates= Coordinates::new(1,1);
+
+        let msg = HandleMsg::PlayMove { coordinates };
         let player1_info = mock_info("player1", &coins(10, "ioc"));
         let player2_info = mock_info("player2", &coins(10, "ioc"));
         let play_move = execute(deps.as_mut(), mock_env(), player1_info, msg.clone());
@@ -249,16 +202,17 @@ mod tests {
     #[test]
     fn play_same_player_test() {
         let mut deps = initialization();
-        let place: Vec<u8> = vec![1, 1];
-        let msg = HandleMsg::PlayMove { place };
+        let coordinates = Coordinates::new(1,1);
+        let msg = HandleMsg::PlayMove { coordinates };
         let player1_info = mock_info("player1", &coins(10, "ioc"));
         let play_move = execute(deps.as_mut(), mock_env(), player1_info.clone(), msg.clone());
         assert!(play_move.is_ok());
-        let place: Vec<u8> = vec![1, 2];
-        let msg = HandleMsg::PlayMove { place };
+        let coordinates = Coordinates::new(1, 2);
+        let msg = HandleMsg::PlayMove { coordinates };
         let play_move = execute(deps.as_mut(), mock_env(), player1_info, msg);
-        assert!(play_move.is_err())
+        assert!(play_move.is_err());
     }
+
 }
 
 // pub fn instantiate(

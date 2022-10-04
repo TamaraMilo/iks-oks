@@ -1,6 +1,8 @@
 
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Addr, Uint128};
+use cosmwasm_std::{Addr};
+
+use crate::helpers::Coordinates;
 
 #[cw_serde]
 pub struct InitMsg {
@@ -10,7 +12,7 @@ pub struct InitMsg {
 }
 #[cw_serde(Serialize)]
 pub enum HandleMsg {
-   PlayMove{ place: Vec<u8>}
+   PlayMove{ coordinates: Coordinates}
 }
 
 #[cw_serde]
@@ -30,7 +32,7 @@ pub enum QueryMsg {
 
 #[cw_serde(Serialize)]
 pub struct TableStatusResponse {
-   pub table: String
+   pub status: String
 }
 
 #[cw_serde(Serialize)]

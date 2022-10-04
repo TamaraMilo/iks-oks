@@ -6,6 +6,8 @@ use serde::{Deserialize, Serialize};
 
 use cosmwasm_std::{Addr, Storage};
 
+use crate::helpers::{GameState, Board};
+
 pub static CONFIG_KEY: &[u8] = b"config";
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
@@ -13,9 +15,9 @@ pub struct State {
     pub player1: Addr,
     pub player2: Addr,
     pub turn: Addr,
-    pub table: Vec<String>,
-    pub game_ended: bool, 
-    pub winner: Addr,
+    pub board: Board,
+    pub game_state: GameState, 
+    pub no_moves: usize
    
 }
 
