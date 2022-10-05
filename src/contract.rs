@@ -1,12 +1,12 @@
+use crate::error::ContractError;
+use crate::helpers::{Board, Coordinates, GameState};
+use crate::msg::{
+    GameStatusResponse, HandleMsg, InitMsg, PlayerTurnResponse, QueryMsg, TableStatusResponse,
+};
+use crate::state::{config, config_read, State};
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{to_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult};
-use crate::error::ContractError;
-use crate::helpers::{GameState, Board, Coordinates};
-use crate::msg::{
-    GameStatusRespons, HandleMsg, InitMsg, PlayerTurnResponse, QueryMsg, TableStatusResponse,
-};
-use crate::state::{config, config_read, State};
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn init(
@@ -57,7 +57,7 @@ pub fn playmove(
             val: "It's not your turn!".to_string(),
         });
     }
-
+    #[warn(unused_assignments)]
     let mut sign = "".to_string();
 
     if storage.turn == storage.player1 {
@@ -66,15 +66,23 @@ pub fn playmove(
         sign = "O".to_string();
     }
 
-    let last_move: usize = (coordinates.x * 3 + coordinates.y).into();
-    if !storage.board.occupy_cell(storage.turn.clone(), coordinates.clone(), sign) 
+    if !storage
+        .board
+        .occupy_cell(storage.turn.clone(), coordinates.clone(), sign)
     {
-        return Err(ContractError::CustomError { val: "Spot is occupied".to_string() })
+        return Err(ContractError::CustomError {
+            val: "Spot is occupied".to_string(),
+        });
     }
-    storage.no_moves = storage.no_moves+1;
+    storage.no_moves = storage.no_moves + 1;
 
     if storage.board.check_for_win(coordinates.clone()) {
-        storage.game_state = GameState::GameWon{player: storage.turn.clone()};
+        storage.game_state = GameState::GameWon {
+            player: storage.turn.clone(),
+        };
+    }
+    if storage.no_moves == 9 && storage.game_state == GameState::InProgess {
+        storage.game_state = GameState::Tie
     }
 
     if storage.turn == storage.player1 {
@@ -102,15 +110,13 @@ pub fn query_table_status(deps: Deps) -> StdResult<TableStatusResponse> {
     let storage = config_read(deps.storage).load()?;
     let status = storage.board.draw_board();
 
-    
-
     Ok(TableStatusResponse { status })
 }
 pub fn query_player_turn(deps: Deps) -> StdResult<PlayerTurnResponse> {
     let storage = config_read(deps.storage).load()?;
     Ok(PlayerTurnResponse { turn: storage.turn })
 }
-pub fn query_game_status(deps: Deps) -> StdResult<GameStatusRespons> {
+pub fn query_game_status(deps: Deps) -> StdResult<GameStatusResponse> {
     let storage = config_read(deps.storage).load()?;
     let mut status = String::new();
     if storage.game_state == GameState::InProgess {
@@ -119,24 +125,22 @@ pub fn query_game_status(deps: Deps) -> StdResult<GameStatusRespons> {
             storage.turn
         );
     } else {
-        if storage.game_state == GameState::Tie
-        {
+        if storage.game_state == GameState::Tie {
             status = String::from("Game ended in a tie;")
-        }
-        else
-        {   let player = storage.game_state as crate::helpers::GameState;
-            status = format!("Game ended. Player {:?} won!", player )
+        } else {
+            let player = storage.game_state as crate::helpers::GameState;
+            status = format!("Game ended. Player {:?} won!", player)
         }
     }
 
-    Ok(GameStatusRespons { status })
+    Ok(GameStatusResponse { status })
 }
 #[cfg(test)]
 mod tests {
+
     use super::*;
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info, MockApi, MockQuerier};
     use cosmwasm_std::{coins, from_binary, Addr, MemoryStorage, OwnedDeps};
-    use nalgebra::coordinates;
 
     fn initialization() -> OwnedDeps<MemoryStorage, MockApi, MockQuerier> {
         let mut deps = mock_dependencies();
@@ -166,7 +170,9 @@ mod tests {
     #[test]
     fn table_status_query_test() {
         let deps = initialization();
-        query(deps.as_ref(), mock_env(), QueryMsg::TableStatus {}).unwrap();
+        let res = query(deps.as_ref(), mock_env(), QueryMsg::TableStatus {}).unwrap();
+        let value: TableStatusResponse = from_binary(&res).unwrap();
+        print!("{:?}", value);
     }
 
     #[test]
@@ -178,7 +184,7 @@ mod tests {
     #[test]
     fn play_move_test() {
         let mut deps = initialization();
-        let coordinates= Coordinates::new(1,1);
+        let coordinates = Coordinates::new(1, 1);
 
         let msg = HandleMsg::PlayMove { coordinates };
         let player1_info = mock_info("player1", &coins(10, "ioc"));
@@ -189,30 +195,105 @@ mod tests {
     #[test]
     fn play_same_move_test() {
         let mut deps = initialization();
-        let coordinates= Coordinates::new(1,1);
+        let coordinates = Coordinates::new(1, 1);
 
         let msg = HandleMsg::PlayMove { coordinates };
         let player1_info = mock_info("player1", &coins(10, "ioc"));
         let player2_info = mock_info("player2", &coins(10, "ioc"));
         let play_move = execute(deps.as_mut(), mock_env(), player1_info, msg.clone());
         assert!(play_move.is_ok());
+
         let play_move = execute(deps.as_mut(), mock_env(), player2_info, msg);
         assert!(play_move.is_err())
     }
     #[test]
     fn play_same_player_test() {
         let mut deps = initialization();
-        let coordinates = Coordinates::new(1,1);
+        let coordinates = Coordinates::new(1, 1);
         let msg = HandleMsg::PlayMove { coordinates };
         let player1_info = mock_info("player1", &coins(10, "ioc"));
         let play_move = execute(deps.as_mut(), mock_env(), player1_info.clone(), msg.clone());
         assert!(play_move.is_ok());
+
         let coordinates = Coordinates::new(1, 2);
         let msg = HandleMsg::PlayMove { coordinates };
         let play_move = execute(deps.as_mut(), mock_env(), player1_info, msg);
         assert!(play_move.is_err());
     }
 
+    #[test]
+    fn play_game_test() {
+        let mut deps = initialization();
+        let player1_info = mock_info("player1", &coins(10, "ioc"));
+        let player2_info = mock_info("player2", &coins(10, "ioc"));
+        for i in 0..6 {
+            if i % 2 == 0 {
+                let coordinates = Coordinates::new(i / 2, 0);
+                let msg = HandleMsg::PlayMove { coordinates };
+                let play_move =
+                    execute(deps.as_mut(), mock_env(), player1_info.clone(), msg.clone());
+                assert!(play_move.is_ok());
+            } else {
+                let coordinates = Coordinates::new(i / 2, 1);
+                let msg = HandleMsg::PlayMove { coordinates };
+                let play_move =
+                    execute(deps.as_mut(), mock_env(), player2_info.clone(), msg.clone());
+                if i != 5 {
+                    assert!(play_move.is_ok());
+                } else {
+                    assert!(play_move.is_err());
+                }
+            }
+            let res = query(deps.as_ref(), mock_env(), QueryMsg::TableStatus {}).unwrap();
+            let value: TableStatusResponse = from_binary(&res).unwrap();
+            println!("{:?}", value);
+        }
+    }
+
+    #[test]
+    fn play_tie_game_test() {
+        let mut deps = initialization();
+        let player1_info = mock_info("player1", &coins(10, "ioc"));
+        let player2_info = mock_info("player2", &coins(10, "ioc"));
+        for i in 0..3 {
+            for j in 0..3 {
+                let coordinates;
+                if i == 1 {
+                    coordinates = Coordinates::new(i + 1, j);
+                } else {
+                    if i == 2 {
+                        coordinates = Coordinates::new(i - 1, j);
+                    } else {
+                        coordinates = Coordinates::new(i.clone(), j.clone());
+                    }
+                }
+                let msg = HandleMsg::PlayMove { coordinates };
+                let play_move;
+                if (i + j) % 2 == 0 {
+                    play_move =
+                        execute(deps.as_mut(), mock_env(), player1_info.clone(), msg.clone());
+                } else {
+                    play_move =
+                        execute(deps.as_mut(), mock_env(), player2_info.clone(), msg.clone());
+                }
+
+                assert!(play_move.is_ok());
+                let res = query(deps.as_ref(), mock_env(), QueryMsg::TableStatus {}).unwrap();
+                let value: TableStatusResponse = from_binary(&res).unwrap();
+                println!("{:?}", value);
+            }
+        }
+        let coordinates = Coordinates::new(0, 0);
+        let msg = HandleMsg::PlayMove { coordinates };
+        let play_move = execute(deps.as_mut(), mock_env(), player2_info.clone(), msg.clone());
+        assert!(play_move.is_err());
+        let res = query(deps.as_ref(), mock_env(), QueryMsg::TableStatus {}).unwrap();
+        let value: TableStatusResponse = from_binary(&res).unwrap();
+        println!("{:?}", value);
+        let res = query(deps.as_ref(), mock_env(), QueryMsg::GameStatus {}).unwrap();
+        let value: GameStatusResponse = from_binary(&res).unwrap();
+        println!("{:?}", value);
+    }
 }
 
 // pub fn instantiate(
