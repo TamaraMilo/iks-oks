@@ -83,7 +83,7 @@ impl Board {
     }
     pub fn draw_board(&self) -> String {
         let mut board_look = String::from(
-            "---------
+            "-------------
         ",
         );
         for i in 0..3 {
@@ -95,7 +95,7 @@ impl Board {
                 board_look += " |";
             }
             board_look += &"|".to_string();
-            board_look += "---------
+            board_look += "--------------
             "
         }
 

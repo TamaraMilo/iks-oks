@@ -11,6 +11,7 @@ pub struct InitMsg {
 #[cw_serde(Serialize)]
 pub enum HandleMsg {
     PlayMove { coordinates: Coordinates },
+    RestartGame {},
 }
 
 #[cw_serde]
