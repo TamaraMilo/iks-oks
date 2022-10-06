@@ -4,7 +4,7 @@ use cosmwasm_storage::{singleton, singleton_read, ReadonlySingleton, Singleton};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use cosmwasm_std::{Addr, Storage};
+use cosmwasm_std::{Addr, Storage, Uint128};
 
 use crate::helpers::{GameState, Board};
 
@@ -17,7 +17,8 @@ pub struct State {
     pub turn: Addr,
     pub board: Board,
     pub game_state: GameState, 
-    pub no_moves: usize
+    pub no_moves: usize,
+    pub total_coins_raised: Uint128,
    
 }
 
