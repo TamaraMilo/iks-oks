@@ -1,7 +1,9 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::Addr;
 
-use crate::helpers::Coordinates;
+use crate::cell::Coordinates;
+
+
 
 #[cw_serde]
 pub struct InitMsg {
@@ -12,6 +14,7 @@ pub struct InitMsg {
 pub enum HandleMsg {
     PlayMove { coordinates: Coordinates },
     RestartGame {},
+    AddRoom {name:String, }
 }
 
 #[cw_serde]

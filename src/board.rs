@@ -2,31 +2,8 @@ use cosmwasm_std::Addr;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
-pub enum GameState {
-    GameWon { player: Addr },
-    Tie,
-    InProgess,
-}
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
-pub struct Coordinates {
-    pub x: u8,
-    pub y: u8,
-}
-impl Coordinates {
-    pub fn new(x: u8, y: u8) -> Self {
-        Self { x, y }
-    }
-    pub fn index(&self) -> usize {
-        (self.x * 3 + self.y).into()
-    }
-}
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
-pub struct Cell {
-    pub coordinates: Coordinates,
-    pub player: Option<Addr>,
-    pub sign: String,
-}
+use crate::cell::{Cell, Coordinates};
+
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
 pub struct Board {
     pub cells: Vec<Cell>,
@@ -38,11 +15,7 @@ impl Board {
         for i in 0..3 {
             for j in 0..3 {
                 let coordinates = Coordinates { x: i, y: j };
-                let cell = Cell {
-                    coordinates,
-                    player: None,
-                    sign: String::from(""),
-                };
+                let cell = Cell::new(coordinates);
                 cells.push(cell);
             }
         }
@@ -101,51 +74,11 @@ impl Board {
 
         board_look
     }
+    pub fn restart_board(&self) -> Self {
+        let mut cells: Vec<Cell> = vec![];
+        for index in 0..self.cells.len() {
+            cells[index] = self.cells[index].restart();
+        }
+        Self { cells }
+    }
 }
-
-// use schemars::JsonSchema;
-// use serde::{Deserialize, Serialize};
-
-// use cosmwasm_std::{
-//     to_binary, Addr, CosmosMsg, CustomQuery, Querier, QuerierWrapper, StdResult, WasmMsg, WasmQuery,
-// };
-
-// use crate::msg::{ExecuteMsg, GetCountResponse, QueryMsg};
-
-// /// CwTemplateContract is a wrapper around Addr that provides a lot of helpers
-// /// for working with this.
-// #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
-// pub struct CwTemplateContract(pub Addr);
-
-// impl CwTemplateContract {
-//     pub fn addr(&self) -> Addr {
-//         self.0.clone()
-//     }
-
-//     pub fn call<T: Into<ExecuteMsg>>(&self, msg: T) -> StdResult<CosmosMsg> {
-//         let msg = to_binary(&msg.into())?;
-//         Ok(WasmMsg::Execute {
-//             contract_addr: self.addr().into(),
-//             msg,
-//             funds: vec![],
-//         }
-//         .into())
-//     }
-
-//     /// Get Count
-//     pub fn count<Q, T, CQ>(&self, querier: &Q) -> StdResult<GetCountResponse>
-//     where
-//         Q: Querier,
-//         T: Into<String>,
-//         CQ: CustomQuery,
-//     {
-//         let msg = QueryMsg::GetCount {};
-//         let query = WasmQuery::Smart {
-//             contract_addr: self.addr().into(),
-//             msg: to_binary(&msg)?,
-//         }
-//         .into();
-//         let res: GetCountResponse = QuerierWrapper::<CQ>::new(querier).query(&query)?;
-//         Ok(res)
-//     }
-// }

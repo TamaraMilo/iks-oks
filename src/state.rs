@@ -6,7 +6,8 @@ use serde::{Deserialize, Serialize};
 
 use cosmwasm_std::{Addr, Storage, Uint128};
 
-use crate::helpers::{GameState, Board};
+use crate::{room::GameState, board::Board};
+
 
 pub static CONFIG_KEY: &[u8] = b"config";
 

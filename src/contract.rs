@@ -1,12 +1,15 @@
+use crate::board::Board;
+use crate::cell::Coordinates;
 use crate::error::ContractError;
-use crate::helpers::{Board, Coordinates, GameState};
+
 use crate::msg::{
     GameStatusResponse, HandleMsg, InitMsg, PlayerTurnResponse, QueryMsg, TableStatusResponse,
 };
+use crate::room::GameState;
 use crate::state::{config, config_read, State};
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::{to_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult, Uint128, StdError, SubMsg, BankMsg, Coin, CosmosMsg};
+use cosmwasm_std::{to_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult, Uint128, SubMsg, BankMsg, Coin};
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn init(
@@ -38,14 +41,16 @@ pub fn execute(
     msg: HandleMsg,
 ) -> Result<Response, ContractError> {
     match msg {
-        HandleMsg::PlayMove { coordinates } => playmove(deps, env, info, coordinates),
-        HandleMsg::RestartGame {  }=> restartgame(deps)
+        HandleMsg::PlayMove { coordinates } => play_move(deps, info, coordinates),
+        HandleMsg::RestartGame {  }=> restart_game(deps),
+        HandleMsg::AddRoom { name } => add_room(),
+
+
      }
 }
 
-pub fn playmove(
+pub fn play_move(
     deps: DepsMut,
-    env: Env,
     info: MessageInfo,
     coordinates: Coordinates,
 ) -> Result<Response, ContractError> {
@@ -119,14 +124,20 @@ pub fn playmove(
     response = response.set_data(to_binary(&storage.board).unwrap());
     Ok(response)
 }
+pub fn add_room() -> Result<Response, ContractError>
+{
+    let response = Response::default();
+    Ok(response)
+}
 
-pub fn restartgame(deps: DepsMut) -> Result<Response, ContractError>
+pub fn restart_game(deps: DepsMut) -> Result<Response, ContractError>
 {
     let mut storage = config(deps.storage).load()?; 
     
     storage.board = Board::new();
     storage.no_moves = 0;
     storage.game_state = GameState::InProgess;
+    storage.total_coins_raised = Uint128::zero();
     config(deps.storage).save(&storage)?;
 
     let mut response = Response::default();
@@ -166,7 +177,7 @@ pub fn query_game_status(deps: Deps) -> StdResult<GameStatusResponse> {
         if storage.game_state == GameState::Tie {
             status = String::from("Game ended in a tie;")
         } else {
-            let player = storage.game_state as crate::helpers::GameState;
+            let player = storage.game_state as crate::room::GameState;
             status = format!("Game ended. Player {:?} won!", player.to_owned())
         }
     }
