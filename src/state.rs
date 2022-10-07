@@ -1,13 +1,9 @@
 use std::u8;
-
 use cosmwasm_storage::{singleton, singleton_read, ReadonlySingleton, Singleton};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-
 use cosmwasm_std::{Addr, Storage, Uint128};
-
 use crate::{room::GameState, board::Board};
-
 
 pub static CONFIG_KEY: &[u8] = b"config";
 

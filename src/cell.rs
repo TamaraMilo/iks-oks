@@ -36,4 +36,10 @@ impl Cell {
             sign: "".to_string(),
         }
     }
+    pub fn occupy(&mut self, player: Addr, sign: String) -> &Self
+    {
+        self.player = Some(player);
+        self.sign = sign;
+        self
+    }
 }

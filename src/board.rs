@@ -25,8 +25,9 @@ impl Board {
     pub fn occupy_cell(&mut self, player: Addr, coordinates: Coordinates, sign: String) -> bool {
         let cell_index: usize = coordinates.index();
         if self.cells[cell_index].player == None {
-            self.cells[cell_index].player = Some(player);
-            self.cells[cell_index].sign = sign;
+            self.cells[cell_index].occupy(player, sign);
+            // self.cells[cell_index].player = Some(player);
+            // self.cells[cell_index].sign = sign;
             return true;
         }
 

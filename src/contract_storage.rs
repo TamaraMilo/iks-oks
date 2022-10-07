@@ -29,7 +29,7 @@ impl ContractStorage
         if room_exist != None {
             return Err(ContractError::RoomError { val: "Room already exists.".to_string() });
         }
-        let room_exist = may_deserialize(&room_exist).map_err(|_|return ContractError::RoomError { val: "Room serialization error".to_string() })?;
+        let room_exist = may_deserialize(&room_exist).map_err(|_|return ContractError::RoomError { val: "Room deserialization error".to_string() })?;
         Ok(room_exist)
     }
     pub fn save_room(name: String, storage: &mut dyn Storage, room: Room) -> Result<(), ContractError>
