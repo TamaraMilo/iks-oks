@@ -1,9 +1,7 @@
 use std::any::type_name;
 
-use cosmwasm_std::{StdResult, from_slice, StdError};
+use cosmwasm_std::{from_slice, StdError, StdResult};
 use serde::de::DeserializeOwned;
-
-
 
 pub(crate) fn may_deserialize<T: DeserializeOwned>(
     value: &Option<Vec<u8>>,

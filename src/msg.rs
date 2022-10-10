@@ -1,31 +1,34 @@
+use crate::cell::Coordinates;
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::Addr;
 
-use crate::cell::Coordinates;
-
-
-
 #[cw_serde]
-pub struct InitMsg {
-    pub player1: Addr,
-    pub player2: Addr,
-}
+pub struct InitMsg;
 #[cw_serde(Serialize)]
 pub enum HandleMsg {
-    PlayMove { coordinates: Coordinates },
-    RestartGame {},
-    AddRoom {name:String, }
+    PlayMove {
+        coordinates: Coordinates,
+        name: String,
+    },
+    RestartGame {
+        name: String,
+    },
+    AddRoom {
+        name: String,
+        player1: Addr,
+        player2: Addr,
+    },
 }
 
 #[cw_serde]
 #[derive(QueryResponses)]
 pub enum QueryMsg {
     #[returns(TableStatusResponse)]
-    TableStatus {},
+    TableStatus { name: String },
     #[returns(PlayerTurnResponse)]
-    PlayerTurn {},
+    PlayerTurn { name: String },
     #[returns(GameStatusResponse)]
-    GameStatus {},
+    GameStatus { name: String },
 }
 
 // We define a custom struct for each query response
