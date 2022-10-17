@@ -1,0 +1,1 @@
+08f270650588410ba015f2708c075b3973fdb70671f0cdd744d57b0aeab4967e  ./target/wasm32-unknown-unknown/release/iks_oks.wasm

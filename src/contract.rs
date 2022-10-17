@@ -1,28 +1,33 @@
+
 use crate::board::Board;
+
 use crate::cell::Coordinates;
-use crate::contract_storage::ContractStorage;
 use crate::error::ContractError;
 use crate::msg::{
-    GameStatusResponse, HandleMsg, InitMsg, PlayerTurnResponse, QueryMsg, TableStatusResponse,
+    GameStatusResponse, HandleMsg, InitMsg, PlayerTurnResponse, QueryMsg, RoomExistResponse,
+    TableStatusResponse, ListPageResponse,
 };
-use crate::room::GameState;
+use crate::room::{ Room, GameState};
+use crate::state::State;
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
     to_binary, Addr, BankMsg, Binary, Coin, Deps, DepsMut, Env, MessageInfo, Response, StdResult,
     SubMsg, Uint128,
 };
+use paginate::Pages;
 
 #[cfg_attr(not(feature = "library"), entry_point)]
-pub fn init(
-    _deps: DepsMut,
+pub fn instantiate(
+    deps: DepsMut,
     _env: Env,
     _info: MessageInfo,
     _msg: InitMsg,
 ) -> Result<Response, ContractError> {
+    State::init_state(deps.storage)?;
     Ok(Response::default())
 }
-
+#[cfg_attr(not(feature = "library"), entry_point)]
 pub fn execute(
     deps: DepsMut,
     _env: Env,
@@ -30,13 +35,12 @@ pub fn execute(
     msg: HandleMsg,
 ) -> Result<Response, ContractError> {
     match msg {
-        HandleMsg::PlayMove { coordinates, name } => play_move(deps, info, coordinates, name),
-        HandleMsg::RestartGame { name } => restart_game(deps, name),
+        HandleMsg::PlayMove { coordinates, room_number } => play_move(deps, info, coordinates, room_number),
+        HandleMsg::RestartGame { room_number } => restart_game(deps, room_number),
         HandleMsg::AddRoom {
-            name,
             player1,
             player2,
-        } => add_room(name, deps, player1, player2),
+        } => add_room(deps, player1, player2),
     }
 }
 
@@ -44,7 +48,7 @@ pub fn play_move(
     deps: DepsMut,
     info: MessageInfo,
     coordinates: Coordinates,
-    name: String,
+    room_number: u8,
 ) -> Result<Response, ContractError> {
     let mut sent_coins = Uint128::zero();
     for coin in info.funds.iter() {
@@ -62,14 +66,17 @@ pub fn play_move(
         });
     }
 
-    let room = ContractStorage::load_room(name.clone(), deps.storage);
+    let room = Room::load_room(room_number, deps.storage);
     if room == None {
         return Err(ContractError::RoomError {
             val: "Room does not exist.".to_string(),
         });
     }
     let mut room = room.unwrap();
-    if room.game_state != GameState::InProgess || room.no_moves == 9 {
+
+    let mut state = State::load_state(deps.storage);
+    
+    if room.game_state != GameState::InProgess.to_string()|| room.no_moves == 9 {
         return Err(ContractError::CustomError {
             val: "Game ended.".to_string(),
         });
@@ -102,19 +109,24 @@ pub fn play_move(
     if room.board.check_for_win(coordinates.clone()) {
         room.game_state = GameState::GameWon {
             player: room.turn.clone(),
-        };
+        }.to_string();
+        let raised_coins = room.total_coins_raised.u128() / 2 ;
+        let coins = Uint128::from(raised_coins);
+        state.balance = state.balance + coins;
         let bankmsg = BankMsg::Send {
             to_address: room.turn.to_string(),
             amount: vec![Coin {
-                amount: room.total_coins_raised,
+                amount: coins,
                 denom: "ioc".to_string(),
             }],
         };
+        state.save_state(deps.storage)?;
         let submsg = SubMsg::new(bankmsg);
         response.messages.push(submsg)
     }
-    if room.no_moves == 9 && room.game_state == GameState::InProgess {
-        room.game_state = GameState::Tie
+    
+    if room.no_moves == 9 && room.game_state == GameState::InProgess.to_string() {
+        room.game_state = GameState::Tie.to_string()
     }
 
     if room.turn == room.player1 {
@@ -123,31 +135,25 @@ pub fn play_move(
         room.turn = room.player1.clone();
     }
 
-    ContractStorage::save_room(name, deps.storage, room.clone())?;
+    Room::save_room(room_number, deps.storage, room.clone())?;
 
     response = response.set_data(to_binary(&room.board).unwrap());
     Ok(response)
 }
 pub fn add_room(
-    name: String,
+
     deps: DepsMut,
     player1: Addr,
     player2: Addr,
 ) -> Result<Response, ContractError> {
-    let room_exist = ContractStorage::load_room(name.clone(), deps.storage);
-    if room_exist != None {
-        return Err(ContractError::RoomError {
-            val: "Room already exist".to_string(),
-        });
-    }
-    ContractStorage::add_room(name, deps.storage, player1, player2)?;
-
+    let room_number = Room::add_room(deps.storage, player1, player2)?;
     let response = Response::default();
+    let response = response.set_data(to_binary(&room_number)?);
     Ok(response)
 }
 
-pub fn restart_game(deps: DepsMut, name: String) -> Result<Response, ContractError> {
-    let room = ContractStorage::load_room(name.clone(), deps.storage);
+pub fn restart_game(deps: DepsMut, room_number: u8) -> Result<Response, ContractError> {
+    let room = Room::load_room(room_number, deps.storage);
     if room == None {
         return Err(ContractError::RoomError {
             val: "Room does not exist.".to_string(),
@@ -155,27 +161,25 @@ pub fn restart_game(deps: DepsMut, name: String) -> Result<Response, ContractErr
     }
     let mut room = room.unwrap();
 
-    room.board = Board::new();
-    room.no_moves = 0;
-    room.game_state = GameState::InProgess;
-    room.total_coins_raised = Uint128::zero();
-    ContractStorage::save_room(name, deps.storage, room.clone())?;
+    room = room.restart_game();
+    Room::save_room(room_number, deps.storage, room.clone())?;
 
     let mut response = Response::default();
     response = response.set_data(to_binary(&room.board).unwrap());
     Ok(response)
 }
-
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
-        QueryMsg::TableStatus { name } => to_binary(&query_table_status(deps, name)?),
-        QueryMsg::PlayerTurn { name } => to_binary(&query_player_turn(deps, name)?),
-        QueryMsg::GameStatus { name } => to_binary(&query_game_status(deps, name)?),
+        QueryMsg::BoardStatus { room_number } => to_binary(&query_table_status(deps, room_number)?),
+        QueryMsg::PlayerTurn { room_number } => to_binary(&query_player_turn(deps, room_number)?),
+        QueryMsg::GameStatus { room_number } => to_binary(&query_game_status(deps, room_number)?),
+        QueryMsg::RoomExist { room_number } => to_binary(&query_room_exist(deps, room_number)?),
+        QueryMsg::RoomList { page_number } => to_binary(&query_list_rooms(deps,page_number)?)
     }
 }
-pub fn query_table_status(deps: Deps, name: String) -> StdResult<TableStatusResponse> {
-    let room = ContractStorage::load_room(name, deps.storage);
+pub fn query_table_status(deps: Deps, room_number: u8) -> StdResult<TableStatusResponse> {
+    let room = Room::load_room(room_number, deps.storage);
     if room == None {
         return Err(cosmwasm_std::StdError::NotFound {
             kind: "Room not found!".to_string(),
@@ -186,8 +190,8 @@ pub fn query_table_status(deps: Deps, name: String) -> StdResult<TableStatusResp
 
     Ok(TableStatusResponse { status })
 }
-pub fn query_player_turn(deps: Deps, name: String) -> StdResult<PlayerTurnResponse> {
-    let room = ContractStorage::load_room(name, deps.storage);
+pub fn query_player_turn(deps: Deps, room_number: u8) -> StdResult<PlayerTurnResponse> {
+    let room = Room::load_room(room_number, deps.storage);
     if room == None {
         return Err(cosmwasm_std::StdError::NotFound {
             kind: "Room not found!".to_string(),
@@ -196,27 +200,40 @@ pub fn query_player_turn(deps: Deps, name: String) -> StdResult<PlayerTurnRespon
     let room = room.unwrap();
     Ok(PlayerTurnResponse { turn: room.turn })
 }
-pub fn query_game_status(deps: Deps, name: String) -> StdResult<GameStatusResponse> {
-    let room = ContractStorage::load_room(name, deps.storage);
+pub fn query_game_status(deps: Deps, room_number: u8) -> StdResult<GameStatusResponse> {
+    let room = Room::load_room(room_number, deps.storage);
     if room == None {
         return Err(cosmwasm_std::StdError::NotFound {
             kind: "Room not found!".to_string(),
         });
     }
     let room = room.unwrap();
-    let mut status = String::new();
-    if room.game_state == GameState::InProgess {
-        status = format!("Game is still in progress. It's player {} turn.", room.turn);
-    } else {
-        if room.game_state == GameState::Tie {
-            status = String::from("Game ended in a tie;")
-        } else {
-            let player = room.game_state as crate::room::GameState;
-            status = format!("Game ended. Player {:?} won!", player.to_owned())
-        }
-    }
+    let status = String::new();
 
     Ok(GameStatusResponse { status })
+}
+pub fn query_list_rooms(deps: Deps, page_number: u8) -> StdResult<ListPageResponse> 
+{
+    let  mut list_rooms: Vec<Option<Room>> = Vec::new();
+    let state = State::load_state(deps.storage);
+    let pages = Pages::new(state.room_count.into(), 10);
+    let page = pages.with_offset(page_number.into());
+    for i in page.start..page.end
+    {
+        let room = Room::load_room(i.try_into().unwrap(), deps.storage);
+        list_rooms.push(room);
+    }
+    Ok(ListPageResponse{
+        list_rooms
+    })
+}
+
+pub fn query_room_exist(deps: Deps, room_number: u8) -> StdResult<RoomExistResponse> {
+    let room = Room::load_room(room_number, deps.storage);
+    if room == None {
+        return Ok(RoomExistResponse { room_exist: false });
+    }
+    Ok(RoomExistResponse { room_exist: true })
 }
 
 #[cfg(test)]
@@ -225,13 +242,19 @@ mod tests {
     use super::*;
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info, MockApi, MockQuerier};
     use cosmwasm_std::{coins, Addr, MemoryStorage, OwnedDeps};
+    fn init() -> OwnedDeps<MemoryStorage, MockApi, MockQuerier>
+    {
+        let mut deps = mock_dependencies();
+        let res = State::init_state(&mut deps.storage);
+        assert!(res.is_ok());
+        deps
+    }
 
     fn add_room_init() -> OwnedDeps<MemoryStorage, MockApi, MockQuerier> {
-        let mut deps = mock_dependencies();
+        let mut deps= init();
         let info = mock_info("info", &coins(10, "ioc"));
 
         let msg = HandleMsg::AddRoom {
-            name: "room".to_string(),
             player1: Addr::unchecked("player1"),
             player2: Addr::unchecked("player2"),
         };
@@ -248,31 +271,42 @@ mod tests {
     #[test]
     fn player_turn_query_test() {
         let deps = add_room_init();
-        let name = "room".to_string();
-        query(deps.as_ref(), mock_env(), QueryMsg::PlayerTurn { name }).unwrap();
+        query(deps.as_ref(), mock_env(), QueryMsg::PlayerTurn {  room_number: 0 }).unwrap();
+    }
+    #[test]
+    fn room_exist_query_test() {
+        let deps = add_room_init();
+        query(
+            deps.as_ref(),
+            mock_env(),
+            QueryMsg::RoomExist {
+             room_number:0,
+            },
+        )
+        .unwrap();
     }
 
     #[test]
     fn table_status_query_test() {
         let deps = add_room_init();
-        let name = "room".to_string();
-        query(deps.as_ref(), mock_env(), QueryMsg::TableStatus { name }).unwrap();
+
+        query(deps.as_ref(), mock_env(), QueryMsg::BoardStatus { room_number: 0 }).unwrap();
     }
 
     #[test]
     fn game_status_query_test() {
         let deps = add_room_init();
-        let name = "room".to_string();
-        query(deps.as_ref(), mock_env(), QueryMsg::GameStatus { name }).unwrap();
+
+        query(deps.as_ref(), mock_env(), QueryMsg::GameStatus { room_number: 0 }).unwrap();
     }
 
     #[test]
     fn play_move_test() {
         let mut deps = add_room_init();
-        let name = "room".to_string();
+
         let coordinates = Coordinates::new(1, 1);
 
-        let msg = HandleMsg::PlayMove { coordinates, name };
+        let msg = HandleMsg::PlayMove { coordinates, room_number: 0 };
         let player1_info = mock_info("player1", &coins(10, "ioc"));
         let play_move = execute(deps.as_mut(), mock_env(), player1_info.clone(), msg.clone());
 
@@ -282,10 +316,10 @@ mod tests {
     #[test]
     fn play_same_move_test() {
         let mut deps = add_room_init();
-        let name = "room".to_string();
+
         let coordinates = Coordinates::new(1, 1);
 
-        let msg = HandleMsg::PlayMove { coordinates, name };
+        let msg = HandleMsg::PlayMove { coordinates, room_number: 0 };
         let player1_info = mock_info("player1", &coins(10, "ioc"));
         let player2_info = mock_info("player2", &coins(10, "ioc"));
         let play_move = execute(deps.as_mut(), mock_env(), player1_info, msg.clone());
@@ -298,11 +332,11 @@ mod tests {
     #[test]
     fn play_same_player_test() {
         let mut deps = add_room_init();
-        let name = "room".to_string();
+
         let coordinates = Coordinates::new(1, 1);
         let msg = HandleMsg::PlayMove {
             coordinates,
-            name: name.clone(),
+            room_number: 0
         };
         let player1_info = mock_info("player1", &coins(10, "ioc"));
         let play_move = execute(deps.as_mut(), mock_env(), player1_info.clone(), msg.clone());
@@ -311,7 +345,7 @@ mod tests {
         let coordinates = Coordinates::new(1, 2);
         let msg = HandleMsg::PlayMove {
             coordinates,
-            name: name.clone(),
+            room_number: 0
         };
         let play_move = execute(deps.as_mut(), mock_env(), player1_info, msg);
         assert!(play_move.is_err());
@@ -319,26 +353,26 @@ mod tests {
     #[test]
     fn restart_game() {
         let mut deps = add_room_init();
-        let name = "room".to_string();
+
 
         let player1_info = mock_info("player1", &coins(10, "ioc"));
         let player2_info = mock_info("player2", &coins(10, "ioc"));
         let coordinates = Coordinates::new(1, 1);
         let msg = HandleMsg::PlayMove {
             coordinates,
-            name: name.clone(),
+            room_number: 0
         };
         let play_move = execute(deps.as_mut(), mock_env(), player1_info.clone(), msg.clone());
         assert!(play_move.is_ok());
         let coordinates = Coordinates::new(2, 1);
         let msg = HandleMsg::PlayMove {
             coordinates,
-            name: name.clone(),
+            room_number: 0
         };
         let play_move = execute(deps.as_mut(), mock_env(), player2_info.clone(), msg.clone());
         assert!(play_move.is_ok());
 
-        let restart = HandleMsg::RestartGame { name: name.clone() };
+        let restart = HandleMsg::RestartGame { room_number: 0};
         let restart_game = execute(deps.as_mut(), mock_env(), player1_info.clone(), restart);
 
         assert!(restart_game.is_ok());
@@ -346,13 +380,13 @@ mod tests {
     #[test]
     fn play_game_in_not_existing_room_test() {
         let mut deps = add_room_init();
-        let name = "some_room".to_string();
+
         let player1_info = mock_info("player1", &coins(10, "ioc"));
 
         let coordinates = Coordinates::new(2, 0);
         let msg = HandleMsg::PlayMove {
             coordinates,
-            name: name.clone(),
+            room_number: 1,
         };
         let play_move = execute(deps.as_mut(), mock_env(), player1_info.clone(), msg.clone());
         assert!(play_move.is_err())
@@ -361,7 +395,7 @@ mod tests {
     #[test]
     fn play_winning_game_test() {
         let mut deps = add_room_init();
-        let name = "room".to_string();
+
         let player1_info = mock_info("player1", &coins(10, "ioc"));
         let player2_info = mock_info("player2", &coins(10, "ioc"));
         let all_coordinates: Vec<Coordinates> = vec![
@@ -376,12 +410,13 @@ mod tests {
         for i in 0..all_coordinates.len() {
             let msg = HandleMsg::PlayMove {
                 coordinates: all_coordinates[i].clone(),
-                name: name.clone(),
+                room_number: 0
             };
             if i % 2 == 0 {
                 let play_move =
                     execute(deps.as_mut(), mock_env(), player1_info.clone(), msg.clone());
-                assert!(play_move.is_ok());
+                
+                    assert!(play_move.is_ok());
             } else {
                 let play_move =
                     execute(deps.as_mut(), mock_env(), player2_info.clone(), msg.clone());
@@ -397,7 +432,6 @@ mod tests {
     #[test]
     fn play_tie_game_test() {
         let mut deps = add_room_init();
-        let name = "room".to_string();
         let player1_info = mock_info("player1", &coins(10, "ioc"));
         let player2_info = mock_info("player2", &coins(10, "ioc"));
 
@@ -416,7 +450,7 @@ mod tests {
         for i in 0..all_coordinates.len() {
             let msg = HandleMsg::PlayMove {
                 coordinates: all_coordinates[i].clone(),
-                name: name.clone(),
+                room_number: 0
             };
             if i % 2 == 0 {
                 let play_move =
@@ -430,7 +464,7 @@ mod tests {
         }
         let msg = HandleMsg::PlayMove {
             coordinates: all_coordinates[0].clone(),
-            name,
+            room_number: 0
         };
         let play_move = execute(deps.as_mut(), mock_env(), player2_info.clone(), msg.clone());
         assert!(play_move.is_err());

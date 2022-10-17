@@ -1,4 +1,4 @@
-use crate::cell::Coordinates;
+use crate::{cell::Coordinates, room::Room};
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::Addr;
 
@@ -8,13 +8,12 @@ pub struct InitMsg;
 pub enum HandleMsg {
     PlayMove {
         coordinates: Coordinates,
-        name: String,
+        room_number: u8,
     },
     RestartGame {
-        name: String,
+        room_number: u8,
     },
     AddRoom {
-        name: String,
         player1: Addr,
         player2: Addr,
     },
@@ -24,11 +23,15 @@ pub enum HandleMsg {
 #[derive(QueryResponses)]
 pub enum QueryMsg {
     #[returns(TableStatusResponse)]
-    TableStatus { name: String },
+    BoardStatus { room_number: u8 },
     #[returns(PlayerTurnResponse)]
-    PlayerTurn { name: String },
+    PlayerTurn { room_number: u8 },
     #[returns(GameStatusResponse)]
-    GameStatus { name: String },
+    GameStatus { room_number: u8 },
+    #[returns(RoomExistResponse)]
+    RoomExist { room_number: u8 },
+    #[returns(ListPageResponse)]
+    RoomList { page_number: u8 },
 }
 
 // We define a custom struct for each query response
@@ -45,4 +48,12 @@ pub struct PlayerTurnResponse {
 #[cw_serde(Serialize)]
 pub struct GameStatusResponse {
     pub status: String,
+}
+#[cw_serde(Serialize)]
+pub struct RoomExistResponse {
+    pub room_exist: bool,
+}
+#[cw_serde(Serialize)]
+pub struct ListPageResponse {
+    pub list_rooms: Vec<Option<Room>>,
 }

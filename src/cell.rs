@@ -11,8 +11,8 @@ impl Coordinates {
     pub fn new(x: u8, y: u8) -> Self {
         Self { x, y }
     }
-    pub fn index(&self) -> usize {
-        (self.x * 3 + self.y).into()
+    pub fn index(&self) -> u8 {
+        self.x * 3 + self.y
     }
 }
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]

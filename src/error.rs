@@ -15,4 +15,7 @@ pub enum ContractError {
     // Look at https://docs.rs/thiserror/1.0.21/thiserror/ for details.
     #[error("Room error: {val:?}")]
     RoomError { val: String },
+
+    #[error("State error: {val:?}")]
+    StateError { val: String },
 }

@@ -23,7 +23,7 @@ impl Board {
         Self { cells }
     }
     pub fn occupy_cell(&mut self, player: Addr, coordinates: Coordinates, sign: String) -> bool {
-        let cell_index: usize = coordinates.index();
+        let cell_index: usize = coordinates.index().into();
         if self.cells[cell_index].player == None {
             self.cells[cell_index].occupy(player, sign);
             // self.cells[cell_index].player = Some(player);
@@ -34,7 +34,7 @@ impl Board {
         false
     }
     pub fn check_for_win(&self, coordinates: Coordinates) -> bool {
-        let win_lines = vec![
+        let win_lines: Vec<Vec<[usize; 2]>> = vec![
             vec![[1, 2], [4, 8], [3, 6]],
             vec![[0, 2], [4, 7]],
             vec![[0, 1], [4, 6], [5, 8]],
@@ -45,7 +45,7 @@ impl Board {
             vec![[6, 8], [1, 4]],
             vec![[6, 7], [0, 4], [2, 5]],
         ];
-        let last_move: usize = coordinates.index();
+        let last_move: usize = coordinates.index().into();
         let player = self.cells[last_move].player.clone();
         for i in 0..win_lines[last_move].len() {
             let line = win_lines[last_move][i];
