@@ -3,7 +3,9 @@ use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::Addr;
 
 #[cw_serde]
-pub struct InitMsg;
+pub struct InitMsg {}
+
+
 #[cw_serde(Serialize)]
 pub enum HandleMsg {
     PlayMove {
